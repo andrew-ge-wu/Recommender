@@ -9,15 +9,19 @@ import backtype.storm.tuple.Tuple;
 import backtype.storm.tuple.Values;
 import com.innometrics.integration.app.recommender.ml.partition.PartitionLogic;
 import com.innometrics.integration.app.recommender.ml.partition.impl.RandomPartitionLogic;
+import org.apache.log4j.Logger;
+import org.apache.mahout.cf.taste.model.Preference;
 
 import java.util.Map;
 
-import static com.innometrics.integration.app.recommender.utils.Constants.*;
+import static com.innometrics.integration.app.recommender.utils.Constants.PARTITION_ID;
+import static com.innometrics.integration.app.recommender.utils.Constants.PREFERENCE;
 
 /**
  * @author andrew, Innometrics
  */
 public class PartitionBolt extends BaseRichBolt {
+    private static final Logger LOG = Logger.getLogger(PartitionBolt.class);
     private OutputCollector outputCollector;
     private TopologyContext topologyContext;
     private Map config;
@@ -31,12 +35,8 @@ public class PartitionBolt extends BaseRichBolt {
 
     @Override
     public void execute(Tuple tuple) {
-      //  System.out.println(topologyContext.getThisComponentId() + "-" + topologyContext.getThisTaskIndex() + " received:" + tuple.getValues());
-        String userId = tuple.getStringByField(USER_ID);
-        String itemId = tuple.getStringByField(ITEM_ID);
-        String preference = tuple.getStringByField(PREFERENCE);
-        String timestamp = tuple.getStringByField(TIMESTAMP);
-        outputCollector.emit(tuple, new Values(getPartitionLogic().getPartitionString(userId, itemId, Long.parseLong(timestamp)), userId, itemId, preference, timestamp));
+        Preference preference = (Preference) tuple.getValueByField(PREFERENCE);
+        outputCollector.emit(tuple, new Values(getPartitionLogic().getPartitionString(preference), preference));
         outputCollector.ack(tuple);
     }
 
@@ -46,6 +46,6 @@ public class PartitionBolt extends BaseRichBolt {
 
     @Override
     public void declareOutputFields(OutputFieldsDeclarer outputFieldsDeclarer) {
-        outputFieldsDeclarer.declare(new Fields(PARTITION_ID, USER_ID, ITEM_ID, PREFERENCE, TIMESTAMP));
+        outputFieldsDeclarer.declare(new Fields(PARTITION_ID, PREFERENCE));
     }
 }

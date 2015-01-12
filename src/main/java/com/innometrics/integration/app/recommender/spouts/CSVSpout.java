@@ -4,6 +4,7 @@ import au.com.bytecode.opencsv.CSVReader;
 import backtype.storm.spout.SpoutOutputCollector;
 import backtype.storm.task.TopologyContext;
 import backtype.storm.tuple.Values;
+import org.apache.mahout.cf.taste.impl.model.GenericPreference;
 
 import java.io.FileReader;
 import java.util.Map;
@@ -46,10 +47,10 @@ public class CSVSpout extends AbstractLearningSpout {
             String[] line = reader.readNext();
             if (line != null && line.length == 4) {
                 long id = linesRead.incrementAndGet();
-                _collector.emit(new Values(line), id);
+                _collector.emit(new Values(new GenericPreference(Long.parseLong(line[0]), Long.parseLong(line[1]), Float.parseFloat(line[2]))), id);
             } else if (!isFinished) {
                 System.out.println("Finished reading file, " + linesRead.get() + " lines read");
-                isFinished=true;
+                isFinished = true;
             }
         } catch (Exception e) {
             e.printStackTrace();

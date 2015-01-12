@@ -14,6 +14,6 @@ public abstract class AbstractLearningSpout extends BaseRichSpout {
 
     @Override
     public final void declareOutputFields(OutputFieldsDeclarer outputFieldsDeclarer) {
-        outputFieldsDeclarer.declare(new Fields(USER_ID, ITEM_ID, PREFERENCE, TIMESTAMP));
+        outputFieldsDeclarer.declare(new Fields(PREFERENCE));
     }
 }

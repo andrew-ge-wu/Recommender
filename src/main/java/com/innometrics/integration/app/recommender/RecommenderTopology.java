@@ -6,13 +6,13 @@ import backtype.storm.generated.AlreadyAliveException;
 import backtype.storm.generated.InvalidTopologyException;
 import backtype.storm.topology.TopologyBuilder;
 import backtype.storm.tuple.Fields;
-import com.innometrics.integration.app.recommender.bolts.CalculationUnit;
+import com.innometrics.integration.app.recommender.bolts.CalculationBolt;
 import com.innometrics.integration.app.recommender.bolts.PartitionBolt;
+import com.innometrics.integration.app.recommender.bolts.QualityEvaluationBolt;
 import com.innometrics.integration.app.recommender.bolts.ResultWritingBolt;
+import com.innometrics.integration.app.recommender.ml.model.ResultPreference;
 import com.innometrics.integration.app.recommender.spouts.CSVSpout;
-import com.innometrics.integration.app.recommender.utils.Constants;
-import org.apache.commons.configuration.ConfigurationException;
-import org.apache.commons.configuration.PropertiesConfiguration;
+import org.apache.mahout.cf.taste.impl.model.GenericPreference;
 
 import static com.innometrics.integration.app.recommender.utils.Constants.*;
 
@@ -25,13 +25,18 @@ public class RecommenderTopology {
         TopologyBuilder builder = new TopologyBuilder();
         builder.setSpout(TOPOLOGY_TRAINING_SOURCE, new CSVSpout("ratings.csv", ',', true)).setNumTasks(1);
         builder.setBolt(TOPOLOGY_TRAINING_PARTITION, new PartitionBolt()).shuffleGrouping(TOPOLOGY_TRAINING_SOURCE).setNumTasks(2);
-        builder.setBolt(TOPOLOGY_TRAINING_CALC, new CalculationUnit()).fieldsGrouping(TOPOLOGY_TRAINING_PARTITION, new Fields(PARTITION_ID)).setNumTasks(4);
-        builder.setBolt(TOPOLOGY_TRAINING_WRITING, new ResultWritingBolt()).shuffleGrouping(TOPOLOGY_TRAINING_CALC).setNumTasks(6);
+        builder.setBolt(TOPOLOGY_TRAINING_CALC, new CalculationBolt()).fieldsGrouping(TOPOLOGY_TRAINING_PARTITION, new Fields(PARTITION_ID)).setNumTasks(6);
+        builder.setBolt(TOPOLOGY_TRAINING_WRITING, new ResultWritingBolt()).shuffleGrouping(TOPOLOGY_TRAINING_CALC,DEFAULT_STREAM).setNumTasks(6);
+        builder.setBolt(TOPOLOGY_TRAINING_QE, new QualityEvaluationBolt()).fieldsGrouping(TOPOLOGY_TRAINING_CALC,QE_STREAM, new Fields(BOLT_IDX)).setNumTasks(6);
 
         new LocalCluster().submitTopology("Recommender", new Config(), builder.createTopology());
     }
 
-    PropertiesConfiguration getConfiguration() throws ConfigurationException {
-        return new PropertiesConfiguration(ClassLoader.getSystemResource(Constants.CONFIG_RESOURCE));
+
+    private Config getConfig() {
+        Config toReturn = new Config();
+        toReturn.registerSerialization(GenericPreference.class);
+        toReturn.registerSerialization(ResultPreference.class);
+        return toReturn;
     }
 }
