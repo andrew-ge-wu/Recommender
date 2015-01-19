@@ -26,17 +26,18 @@ public class RecommenderTopology {
         builder.setSpout(TOPOLOGY_TRAINING_SOURCE, new CSVSpout("ratings.csv", ',', true)).setNumTasks(1);
         builder.setBolt(TOPOLOGY_TRAINING_PARTITION, new PartitionBolt()).shuffleGrouping(TOPOLOGY_TRAINING_SOURCE).setNumTasks(2);
         builder.setBolt(TOPOLOGY_TRAINING_CALC, new CalculationBolt()).fieldsGrouping(TOPOLOGY_TRAINING_PARTITION, new Fields(PARTITION_ID)).setNumTasks(6);
-        builder.setBolt(TOPOLOGY_TRAINING_WRITING, new ResultWritingBolt()).shuffleGrouping(TOPOLOGY_TRAINING_CALC,DEFAULT_STREAM).setNumTasks(6);
-        builder.setBolt(TOPOLOGY_TRAINING_QE, new QualityEvaluationBolt()).fieldsGrouping(TOPOLOGY_TRAINING_CALC,QE_STREAM, new Fields(BOLT_IDX)).setNumTasks(6);
+        builder.setBolt(TOPOLOGY_TRAINING_WRITING, new ResultWritingBolt()).shuffleGrouping(TOPOLOGY_TRAINING_CALC, DEFAULT_STREAM).setNumTasks(6);
+        builder.setBolt(TOPOLOGY_TRAINING_QE, new QualityEvaluationBolt()).fieldsGrouping(TOPOLOGY_TRAINING_CALC, QE_STREAM, new Fields(BOLT_IDX)).setNumTasks(6);
 
-        new LocalCluster().submitTopology("Recommender", new Config(), builder.createTopology());
+        new LocalCluster().submitTopology("Recommender", getConfig(), builder.createTopology());
     }
 
 
-    private Config getConfig() {
+    private static Config getConfig() {
         Config toReturn = new Config();
         toReturn.registerSerialization(GenericPreference.class);
         toReturn.registerSerialization(ResultPreference.class);
+        toReturn.setNumAckers(2);
         return toReturn;
     }
 }

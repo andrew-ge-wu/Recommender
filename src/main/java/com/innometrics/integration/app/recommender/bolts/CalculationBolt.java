@@ -1,9 +1,6 @@
 package com.innometrics.integration.app.recommender.bolts;
 
-import backtype.storm.task.OutputCollector;
-import backtype.storm.task.TopologyContext;
 import backtype.storm.topology.OutputFieldsDeclarer;
-import backtype.storm.topology.base.BaseRichBolt;
 import backtype.storm.tuple.Fields;
 import backtype.storm.tuple.Tuple;
 import backtype.storm.tuple.Values;
@@ -11,8 +8,6 @@ import com.innometrics.integration.app.recommender.ml.model.ResultPreference;
 import com.innometrics.integration.app.recommender.repository.TrainingDataModel;
 import com.innometrics.integration.app.recommender.repository.impl.MysqlTrainingDataModel;
 import org.apache.commons.configuration.ConfigurationException;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.log4j.Logger;
 import org.apache.mahout.cf.taste.common.NoSuchItemException;
 import org.apache.mahout.cf.taste.common.NoSuchUserException;
@@ -26,9 +21,12 @@ import org.apache.mahout.cf.taste.recommender.Recommender;
 
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -37,24 +35,21 @@ import static com.innometrics.integration.app.recommender.utils.Constants.*;
 /**
  * @author andrew, Innometrics
  */
-public class CalculationBolt extends BaseRichBolt {
+public class CalculationBolt extends AbstractRichBolt {
     private static final Logger LOG = Logger.getLogger(CalculationBolt.class);
-    private OutputCollector outputCollector;
-    private TopologyContext topologyContext;
-    private Recommender recommender;
+    private static final long ITERATION_LENGTH = 1000L;
+    private transient Recommender recommender;
     private long nextRun;
-    private static long ITERATION_LENGTH = 1000L;
-    private ArrayBlockingQueue<Preference> bufferQueue = new ArrayBlockingQueue<>(5000);
+    private ArrayBlockingQueue<Preference> bufferQueue = new ArrayBlockingQueue<>(20000);
     private TrainingDataModel trainingDataModel;
-    private transient Executor executor;
+    private transient ExecutorService executor;
     private boolean isRecommenderRunning = false;
 
     @Override
-    public void prepare(Map map, TopologyContext topologyContext, OutputCollector outputCollector) {
-        this.outputCollector = outputCollector;
-        this.topologyContext = topologyContext;
+    public void init() {
         try {
-            this.trainingDataModel = new MysqlTrainingDataModel(topologyContext.getThisComponentId() + topologyContext.getThisTaskIndex(), 10000, 60, TimeUnit.SECONDS);
+            this.trainingDataModel = new MysqlTrainingDataModel(getTopologyContext().getThisComponentId() + getTopologyContext().getThisTaskIndex(), 10000, 60, TimeUnit.SECONDS);
+            this.recommender = getRecommender();
         } catch (IOException | ClassNotFoundException | SQLException | TasteException | ConfigurationException e) {
             throw new RuntimeException(e);
         }
@@ -67,7 +62,7 @@ public class CalculationBolt extends BaseRichBolt {
         return this.recommender;
     }
 
-    private Executor getExecutor() {
+    private ExecutorService getExecutor() {
         if (this.executor == null) {
             this.executor = Executors.newSingleThreadExecutor();
         }
@@ -76,22 +71,18 @@ public class CalculationBolt extends BaseRichBolt {
 
     @Override
     public void execute(Tuple tuple) {
-        outputCollector.ack(tuple);
         registerPreference((Preference) tuple.getValueByField(PREFERENCE));
+        getOutputCollector().ack(tuple);
         if (nextRun == 0) setNextRun();
-        if (!isRecommenderRunning) {
-            Set<Pair<Long, Long>> batchHistory = new HashSet<>();
-            for (Preference eachPreference : drainBuffer()) {
-                trainingDataModel.setPreference(eachPreference);
-                batchHistory.add(new ImmutablePair<>(eachPreference.getUserID(), eachPreference.getItemID()));
-            }
-            if (nextRun < System.currentTimeMillis()) {
-                try {
-                    LOG.info("Running recommendation...\t");
-                    getExecutor().execute(new RecommendationRunner(outputCollector, batchHistory));
-                } finally {
-                    setNextRun();
-                }
+        if (!isRecommenderRunning && bufferQueue.size() > 1000 && nextRun < System.currentTimeMillis()) {
+            try {
+                isRecommenderRunning = true;
+                LOG.info("Running recommendation...\t");
+                new RecommendationRunner(drainBuffer()).run();
+                //getExecutor().execute(new RecommendationRunner(drainBuffer()));
+            } finally {
+                setNextRun();
+                isRecommenderRunning = false;
             }
         }
     }
@@ -108,6 +99,7 @@ public class CalculationBolt extends BaseRichBolt {
     private void registerPreference(Preference preference) {
         try {
             bufferQueue.put(preference);
+            trainingDataModel.setPreference(preference);
         } catch (InterruptedException e) {
             LOG.warn(e);
         }
@@ -115,7 +107,7 @@ public class CalculationBolt extends BaseRichBolt {
 
     private void setNextRun() {
         nextRun = System.currentTimeMillis() + ITERATION_LENGTH;
-        LOG.info("Next recommendation on CU" + topologyContext.getThisTaskIndex() + " run at:" + new Date(nextRun));
+        LOG.info("Next recommendation on CU" + getTopologyContext().getThisTaskIndex() + " run at:" + new Date(nextRun));
     }
 
     @Override
@@ -125,44 +117,36 @@ public class CalculationBolt extends BaseRichBolt {
     }
 
     private class RecommendationRunner implements Runnable {
-        private final Collection<Pair<Long, Long>> batch;
-        private final OutputCollector collector;
+        private final Collection<Preference> batch;
 
-        public RecommendationRunner(OutputCollector collector, Collection<Pair<Long, Long>> batch) {
+        public RecommendationRunner(Collection<Preference> batch) {
             this.batch = batch;
-            this.collector = collector;
         }
 
         @Override
         public void run() {
             try {
-                isRecommenderRunning = true;
                 getRecommender().refresh(new ArrayList<Refreshable>());
-                for (Pair<Long, Long> eachPreference : batch) {
-                    List<RecommendedItem> results = getRecommender().recommend(eachPreference.getKey(), 10);
-                    for (RecommendedItem eachItem : results) {
-                        ResultPreference result = new ResultPreference(eachPreference.getKey(), eachItem.getItemID(), eachItem.getValue());
-                        collector.emit(DEFAULT_STREAM, new Values(result));
-                    }
-                    Preference preference = trainingDataModel.getPreference(eachPreference.getKey(), eachPreference.getValue());
-                    if (preference.getValue() != Float.MIN_VALUE) {
-                        try {
-                            collector.emit(QE_STREAM, new Values(
-                                    topologyContext.getThisTaskIndex(),
-                                    preference,
-                                    new ResultPreference(
-                                            eachPreference.getKey()
-                                            , eachPreference.getValue(),
-                                            recommender.estimatePreference(eachPreference.getKey(), eachPreference.getValue()))));
-                        } catch (NoSuchUserException | NoSuchItemException e) {
-                            LOG.debug("No recommendation for " + eachPreference);
+                for (Preference eachPreference : batch) {
+                    try {
+                        List<RecommendedItem> results = getRecommender().recommend(eachPreference.getUserID(), 10);
+                        for (RecommendedItem eachItem : results) {
+                            ResultPreference result = new ResultPreference(eachPreference.getUserID(), eachItem.getItemID(), eachItem.getValue());
+                            getOutputCollector().emit(DEFAULT_STREAM, new Values(result));
                         }
+                        getOutputCollector().emit(QE_STREAM, new Values(
+                                getTopologyContext().getThisTaskIndex(),
+                                eachPreference,
+                                new ResultPreference(
+                                        eachPreference.getUserID()
+                                        , eachPreference.getItemID(),
+                                        getRecommender().estimatePreference(eachPreference.getUserID(), eachPreference.getItemID()))));
+                    } catch (NoSuchUserException | NoSuchItemException e) {
+                        LOG.debug("No recommendation for " + eachPreference);
                     }
                 }
             } catch (TasteException e) {
                 LOG.warn(e);
-            } finally {
-                isRecommenderRunning = false;
             }
         }
     }
