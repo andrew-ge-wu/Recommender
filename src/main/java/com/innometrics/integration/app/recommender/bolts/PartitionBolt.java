@@ -6,10 +6,10 @@ import backtype.storm.tuple.Tuple;
 import backtype.storm.tuple.Values;
 import com.innometrics.integration.app.recommender.ml.partition.PartitionLogic;
 import com.innometrics.integration.app.recommender.ml.partition.impl.RandomPartitionLogic;
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.log4j.Logger;
 import org.apache.mahout.cf.taste.model.Preference;
 
-import static com.innometrics.integration.app.recommender.utils.Constants.PARTITION_ID;
 import static com.innometrics.integration.app.recommender.utils.Constants.PREFERENCE;
 
 /**
@@ -17,21 +17,33 @@ import static com.innometrics.integration.app.recommender.utils.Constants.PREFER
  */
 public class PartitionBolt extends AbstractRichBolt {
     private static final Logger LOG = Logger.getLogger(PartitionBolt.class);
+    private transient PartitionLogic partitionLogic;
 
     @Override
     public void execute(Tuple tuple) {
         Preference preference = (Preference) tuple.getValueByField(PREFERENCE);
-        getOutputCollector().emit(tuple, new Values(getPartitionLogic().getPartitionString(preference), preference));
+        String[] partition = getPartitionLogic().getPartitionStrings(preference);
+        Object[] toSend = new Object[partition.length + 1];
+        System.arraycopy(partition, 0, toSend, 0, partition.length);
+        toSend[toSend.length - 1] = preference;
+        getOutputCollector().emit(tuple, new Values(toSend));
         getOutputCollector().ack(tuple);
     }
 
     private PartitionLogic getPartitionLogic() {
-        return new RandomPartitionLogic();
+        if (partitionLogic == null) {
+            partitionLogic = new RandomPartitionLogic();
+        }
+        return partitionLogic;
+    }
+
+    public String[] groupingFields() {
+        return getPartitionLogic().groupingFields();
     }
 
 
     @Override
     public void declareOutputFields(OutputFieldsDeclarer outputFieldsDeclarer) {
-        outputFieldsDeclarer.declare(new Fields(PARTITION_ID, PREFERENCE));
+        outputFieldsDeclarer.declare(new Fields((String[]) ArrayUtils.add(groupingFields(), PREFERENCE)));
     }
 }

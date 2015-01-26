@@ -7,6 +7,7 @@ import backtype.storm.tuple.Values;
 import org.apache.mahout.cf.taste.impl.model.GenericPreference;
 
 import java.io.FileReader;
+import java.util.Date;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -38,6 +39,8 @@ public class CSVSpout extends AbstractLearningSpout {
             if (includesHeaderRow) reader.readNext();
         } catch (Exception e) {
             throw new RuntimeException(e);
+        } finally {
+            System.out.println("SPOUT Started at:" + new Date());
         }
     }
 

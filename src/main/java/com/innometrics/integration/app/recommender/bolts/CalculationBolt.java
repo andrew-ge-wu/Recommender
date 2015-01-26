@@ -4,31 +4,26 @@ import backtype.storm.topology.OutputFieldsDeclarer;
 import backtype.storm.tuple.Fields;
 import backtype.storm.tuple.Tuple;
 import backtype.storm.tuple.Values;
+import com.innometrics.integration.app.recommender.ml.als.ALSWRFactorizer;
 import com.innometrics.integration.app.recommender.ml.model.ResultPreference;
 import com.innometrics.integration.app.recommender.repository.TrainingDataModel;
-import com.innometrics.integration.app.recommender.repository.impl.MysqlTrainingDataModel;
-import org.apache.commons.configuration.ConfigurationException;
+import com.innometrics.integration.app.recommender.repository.impl.InMemoryTrainingDataModel;
+import com.innometrics.utils.app.commons.settings.store.AppContextSettings;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.log4j.Logger;
 import org.apache.mahout.cf.taste.common.NoSuchItemException;
 import org.apache.mahout.cf.taste.common.NoSuchUserException;
 import org.apache.mahout.cf.taste.common.Refreshable;
 import org.apache.mahout.cf.taste.common.TasteException;
-import org.apache.mahout.cf.taste.impl.recommender.svd.ALSWRFactorizer;
 import org.apache.mahout.cf.taste.impl.recommender.svd.SVDRecommender;
 import org.apache.mahout.cf.taste.model.Preference;
 import org.apache.mahout.cf.taste.recommender.RecommendedItem;
 import org.apache.mahout.cf.taste.recommender.Recommender;
 
-import java.io.IOException;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Date;
-import java.util.List;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedTransferQueue;
 
 import static com.innometrics.integration.app.recommender.utils.Constants.*;
 
@@ -37,77 +32,64 @@ import static com.innometrics.integration.app.recommender.utils.Constants.*;
  */
 public class CalculationBolt extends AbstractRichBolt {
     private static final Logger LOG = Logger.getLogger(CalculationBolt.class);
-    private static final long ITERATION_LENGTH = 1000L;
+    private static final long ITERATION_LENGTH = 10000L;
     private transient Recommender recommender;
-    private long nextRun;
-    private ArrayBlockingQueue<Preference> bufferQueue = new ArrayBlockingQueue<>(20000);
+    private LinkedTransferQueue<Preference> calculationQueue = new LinkedTransferQueue<>();
+    private LinkedTransferQueue<Pair<Preference, ResultPreference>> qeQueue = new LinkedTransferQueue<>();
+    private LinkedTransferQueue<ResultPreference> defaultQueue = new LinkedTransferQueue<>();
+    private AppContextSettings configuration;
     private TrainingDataModel trainingDataModel;
-    private transient ExecutorService executor;
-    private boolean isRecommenderRunning = false;
+    private int batchLimit;
 
     @Override
     public void init() {
         try {
-            this.trainingDataModel = new MysqlTrainingDataModel(getTopologyContext().getThisComponentId() + getTopologyContext().getThisTaskIndex(), 10000, 60, TimeUnit.SECONDS);
+            this.batchLimit = 10000;
+            this.trainingDataModel = new InMemoryTrainingDataModel(50000);
             this.recommender = getRecommender();
-        } catch (IOException | ClassNotFoundException | SQLException | TasteException | ConfigurationException e) {
+            this.configuration=new AppContextSettings();
+            new Thread(new RecommendationRunner()).start();
+        } catch (Throwable e) {
             throw new RuntimeException(e);
         }
     }
 
     private Recommender getRecommender() throws TasteException {
         if (this.recommender == null) {
-            this.recommender = new SVDRecommender(trainingDataModel.getDataModel(), new ALSWRFactorizer(trainingDataModel.getDataModel(), 3, 0.1, 5));
+            this.recommender = new SVDRecommender(trainingDataModel.getDataModel(), new ALSWRFactorizer(trainingDataModel.getDataModel(), 20, 0.01, 5));
         }
         return this.recommender;
     }
 
-    private ExecutorService getExecutor() {
-        if (this.executor == null) {
-            this.executor = Executors.newSingleThreadExecutor();
-        }
-        return this.executor;
-    }
 
     @Override
     public void execute(Tuple tuple) {
-        registerPreference((Preference) tuple.getValueByField(PREFERENCE));
-        getOutputCollector().ack(tuple);
-        if (nextRun == 0) setNextRun();
-        if (!isRecommenderRunning && bufferQueue.size() > 1000 && nextRun < System.currentTimeMillis()) {
+        if (calculationQueue.size() > batchLimit) {
             try {
-                isRecommenderRunning = true;
-                LOG.info("Running recommendation...\t");
-                new RecommendationRunner(drainBuffer()).run();
-                //getExecutor().execute(new RecommendationRunner(drainBuffer()));
-            } finally {
-                setNextRun();
-                isRecommenderRunning = false;
+                Thread.sleep(ITERATION_LENGTH / 100);
+            } catch (InterruptedException e) {
+                LOG.error(e);
             }
+        }
+        getOutputCollector().ack(tuple);
+        registerPreference((Preference) tuple.getValueByField(PREFERENCE));
+        for (ResultPreference eachResult : drainQueue(defaultQueue)) {
+            getOutputCollector().emit(DEFAULT_STREAM, new Values(eachResult));
+        }
+        for (Pair<Preference, ResultPreference> eachResult : drainQueue(qeQueue)) {
+            getOutputCollector().emit(QE_STREAM, new Values(getTopologyContext().getThisTaskIndex(), eachResult.getLeft(), eachResult.getRight()));
         }
     }
 
-    private Collection<Preference> drainBuffer() {
-        Collection<Preference> toReturn = new ArrayList<>();
-        int itemDrained = bufferQueue.drainTo(toReturn);
-        if (itemDrained > 10) {
-            LOG.info("Drained " + itemDrained + " preferences from buff");
-        }
+    private <T> Collection<T> drainQueue(BlockingQueue<T> toDrain) {
+        Collection<T> toReturn = new ArrayList<>();
+        toDrain.drainTo(toReturn);
         return toReturn;
     }
 
-    private void registerPreference(Preference preference) {
-        try {
-            bufferQueue.put(preference);
-            trainingDataModel.setPreference(preference);
-        } catch (InterruptedException e) {
-            LOG.warn(e);
-        }
-    }
 
-    private void setNextRun() {
-        nextRun = System.currentTimeMillis() + ITERATION_LENGTH;
-        LOG.info("Next recommendation on CU" + getTopologyContext().getThisTaskIndex() + " run at:" + new Date(nextRun));
+    private void registerPreference(Preference preference) {
+        calculationQueue.put(preference);
     }
 
     @Override
@@ -117,36 +99,57 @@ public class CalculationBolt extends AbstractRichBolt {
     }
 
     private class RecommendationRunner implements Runnable {
-        private final Collection<Preference> batch;
 
-        public RecommendationRunner(Collection<Preference> batch) {
-            this.batch = batch;
-        }
 
         @Override
         public void run() {
-            try {
-                getRecommender().refresh(new ArrayList<Refreshable>());
-                for (Preference eachPreference : batch) {
+
+            while (true) {
+                Collection<Preference> batch = drainQueue(calculationQueue);
+
+                if (batch.size() > 0) {
                     try {
-                        List<RecommendedItem> results = getRecommender().recommend(eachPreference.getUserID(), 10);
-                        for (RecommendedItem eachItem : results) {
-                            ResultPreference result = new ResultPreference(eachPreference.getUserID(), eachItem.getItemID(), eachItem.getValue());
-                            getOutputCollector().emit(DEFAULT_STREAM, new Values(result));
+                        if (batch.size() < batchLimit / 10) {
+                            Thread.sleep(ITERATION_LENGTH);
+                            batch.addAll(drainQueue(calculationQueue));
                         }
-                        getOutputCollector().emit(QE_STREAM, new Values(
-                                getTopologyContext().getThisTaskIndex(),
-                                eachPreference,
-                                new ResultPreference(
-                                        eachPreference.getUserID()
-                                        , eachPreference.getItemID(),
-                                        getRecommender().estimatePreference(eachPreference.getUserID(), eachPreference.getItemID()))));
-                    } catch (NoSuchUserException | NoSuchItemException e) {
-                        LOG.debug("No recommendation for " + eachPreference);
+                        LOG.info("Running calculation on " + batch.size() + " new items.");
+                        for (Preference eachNewP : batch) {
+                            trainingDataModel.setPreference(eachNewP);
+                        }
+                        getRecommender().refresh(new ArrayList<Refreshable>());
+                        Set<Long> uids = new HashSet<>();
+                        for (Preference eachPreference : batch) {
+                            try {
+                                long uid = eachPreference.getUserID();
+                                if (!uids.contains(uid)) {
+                                    List<RecommendedItem> results = getRecommender().recommend(eachPreference.getUserID(), 10);
+                                    for (RecommendedItem eachItem : results) {
+                                        defaultQueue.put(new ResultPreference(uid, eachItem.getItemID(), eachItem.getValue()));
+                                    }
+                                    uids.add(uid);
+                                }
+                                qeQueue.put(new ImmutablePair<>(
+                                        eachPreference,
+                                        new ResultPreference(
+                                                eachPreference.getUserID()
+                                                , eachPreference.getItemID(),
+                                                getRecommender().estimatePreference(eachPreference.getUserID(), eachPreference.getItemID()))));
+                            } catch (NoSuchUserException | NoSuchItemException e) {
+                                LOG.info("No recommendation for " + eachPreference);
+                            }
+                        }
+                    } catch (TasteException | InterruptedException e) {
+                        LOG.warn(e);
+                    }
+                } else {
+                    try {
+                        Thread.sleep(ITERATION_LENGTH);
+                        LOG.info("No new preference:" + new Date());
+                    } catch (InterruptedException e) {
+                        LOG.error(e);
                     }
                 }
-            } catch (TasteException e) {
-                LOG.warn(e);
             }
         }
     }
