@@ -32,10 +32,10 @@ import static com.innometrics.integration.app.recommender.utils.Constants.*;
  */
 public class CalculationBolt extends AbstractRichBolt {
     private static final Logger LOG = Logger.getLogger(CalculationBolt.class);
-    private static final long ITERATION_LENGTH = 10000L;
+    private static final long ITERATION_LENGTH = 5000L;
     private transient Recommender recommender;
-    private LinkedTransferQueue<Preference> calculationQueue = new LinkedTransferQueue<>();
-    private LinkedTransferQueue<Pair<Preference, ResultPreference>> qeQueue = new LinkedTransferQueue<>();
+    private LinkedTransferQueue<Tuple> calculationQueue = new LinkedTransferQueue<>();
+    private LinkedTransferQueue<ImmutablePair<Tuple, ResultPreference>> qeQueue = new LinkedTransferQueue<>();
     private LinkedTransferQueue<ResultPreference> defaultQueue = new LinkedTransferQueue<>();
     private AppContextSettings configuration;
     private TrainingDataModel trainingDataModel;
@@ -47,7 +47,7 @@ public class CalculationBolt extends AbstractRichBolt {
             this.batchLimit = 10000;
             this.trainingDataModel = new InMemoryTrainingDataModel(50000);
             this.recommender = getRecommender();
-            this.configuration=new AppContextSettings();
+            this.configuration = new AppContextSettings();
             new Thread(new RecommendationRunner()).start();
         } catch (Throwable e) {
             throw new RuntimeException(e);
@@ -56,7 +56,7 @@ public class CalculationBolt extends AbstractRichBolt {
 
     private Recommender getRecommender() throws TasteException {
         if (this.recommender == null) {
-            this.recommender = new SVDRecommender(trainingDataModel.getDataModel(), new ALSWRFactorizer(trainingDataModel.getDataModel(), 20, 0.01, 5));
+            this.recommender = new SVDRecommender(trainingDataModel.getDataModel(), new ALSWRFactorizer(trainingDataModel.getDataModel(), 10, 0.01, 5));
         }
         return this.recommender;
     }
@@ -71,13 +71,14 @@ public class CalculationBolt extends AbstractRichBolt {
                 LOG.error(e);
             }
         }
-        getOutputCollector().ack(tuple);
-        registerPreference((Preference) tuple.getValueByField(PREFERENCE));
+        registerPreference(tuple);
         for (ResultPreference eachResult : drainQueue(defaultQueue)) {
             getOutputCollector().emit(DEFAULT_STREAM, new Values(eachResult));
         }
-        for (Pair<Preference, ResultPreference> eachResult : drainQueue(qeQueue)) {
-            getOutputCollector().emit(QE_STREAM, new Values(getTopologyContext().getThisTaskIndex(), eachResult.getLeft(), eachResult.getRight()));
+        for (Pair<Tuple, ResultPreference> eachResult : drainQueue(qeQueue)) {
+            Preference eachPreference = (Preference) eachResult.getLeft().getValueByField(PREFERENCE);
+            getOutputCollector().emit(QE_STREAM, eachResult.getLeft(), new Values(getTopologyContext().getThisTaskIndex(), eachPreference, eachResult.getRight()));
+            getOutputCollector().ack(eachResult.getLeft());
         }
     }
 
@@ -88,7 +89,7 @@ public class CalculationBolt extends AbstractRichBolt {
     }
 
 
-    private void registerPreference(Preference preference) {
+    private void registerPreference(Tuple preference) {
         calculationQueue.put(preference);
     }
 
@@ -105,8 +106,7 @@ public class CalculationBolt extends AbstractRichBolt {
         public void run() {
 
             while (true) {
-                Collection<Preference> batch = drainQueue(calculationQueue);
-
+                Collection<Tuple> batch = drainQueue(calculationQueue);
                 if (batch.size() > 0) {
                     try {
                         if (batch.size() < batchLimit / 10) {
@@ -114,12 +114,13 @@ public class CalculationBolt extends AbstractRichBolt {
                             batch.addAll(drainQueue(calculationQueue));
                         }
                         LOG.info("Running calculation on " + batch.size() + " new items.");
-                        for (Preference eachNewP : batch) {
-                            trainingDataModel.setPreference(eachNewP);
+                        for (Tuple tuple : batch) {
+                            trainingDataModel.setPreference((Preference) tuple.getValueByField(PREFERENCE));
                         }
                         getRecommender().refresh(new ArrayList<Refreshable>());
                         Set<Long> uids = new HashSet<>();
-                        for (Preference eachPreference : batch) {
+                        for (Tuple tuple : batch) {
+                            Preference eachPreference = (Preference) tuple.getValueByField(PREFERENCE);
                             try {
                                 long uid = eachPreference.getUserID();
                                 if (!uids.contains(uid)) {
@@ -130,7 +131,7 @@ public class CalculationBolt extends AbstractRichBolt {
                                     uids.add(uid);
                                 }
                                 qeQueue.put(new ImmutablePair<>(
-                                        eachPreference,
+                                        tuple,
                                         new ResultPreference(
                                                 eachPreference.getUserID()
                                                 , eachPreference.getItemID(),

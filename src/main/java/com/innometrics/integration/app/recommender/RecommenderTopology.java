@@ -20,13 +20,13 @@ import static com.innometrics.integration.app.recommender.utils.Constants.*;
  * @author andrew, Innometrics
  */
 public class RecommenderTopology {
-    private static final int NR_CU=6;
+    private static final int NR_CU=7;
 
     public static void main(String[] args) throws AlreadyAliveException, InvalidTopologyException {
         TopologyBuilder builder = new TopologyBuilder();
         builder.setSpout(TOPOLOGY_TRAINING_SOURCE, new CSVSpout("ratings.csv", ',', true)).setNumTasks(1);
         PartitionBolt partitionBolt = new PartitionBolt();
-        builder.setBolt(TOPOLOGY_TRAINING_PARTITION, partitionBolt).shuffleGrouping(TOPOLOGY_TRAINING_SOURCE).setNumTasks(2);
+        builder.setBolt(TOPOLOGY_TRAINING_PARTITION, partitionBolt).shuffleGrouping(TOPOLOGY_TRAINING_SOURCE).setNumTasks(1);
         builder.setBolt(TOPOLOGY_TRAINING_CALC, new CalculationBolt()).fieldsGrouping(TOPOLOGY_TRAINING_PARTITION, new Fields(partitionBolt.groupingFields())).setNumTasks(NR_CU);
         builder.setBolt(TOPOLOGY_TRAINING_WRITING, new ResultWritingBolt()).shuffleGrouping(TOPOLOGY_TRAINING_CALC, DEFAULT_STREAM).setNumTasks(NR_CU);
         builder.setBolt(TOPOLOGY_TRAINING_QE, new QualityEvaluationBolt()).fieldsGrouping(TOPOLOGY_TRAINING_CALC, QE_STREAM, new Fields(BOLT_IDX)).setNumTasks(NR_CU/2);
@@ -38,7 +38,7 @@ public class RecommenderTopology {
         Config toReturn = new Config();
         toReturn.registerSerialization(GenericPreference.class);
         toReturn.registerSerialization(ResultPreference.class);
-        toReturn.setMessageTimeoutSecs(60);
+        toReturn.setMessageTimeoutSecs(600);
         toReturn.setNumAckers(2);
         return toReturn;
     }

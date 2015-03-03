@@ -5,7 +5,7 @@ import backtype.storm.tuple.Fields;
 import backtype.storm.tuple.Tuple;
 import backtype.storm.tuple.Values;
 import com.innometrics.integration.app.recommender.ml.partition.PartitionLogic;
-import com.innometrics.integration.app.recommender.ml.partition.impl.RandomPartitionLogic;
+import com.innometrics.integration.app.recommender.ml.partition.impl.UserPartitionLogic;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.log4j.Logger;
 import org.apache.mahout.cf.taste.model.Preference;
@@ -32,7 +32,7 @@ public class PartitionBolt extends AbstractRichBolt {
 
     private PartitionLogic getPartitionLogic() {
         if (partitionLogic == null) {
-            partitionLogic = new RandomPartitionLogic();
+            partitionLogic = new UserPartitionLogic();
         }
         return partitionLogic;
     }

@@ -22,6 +22,8 @@ public class CSVSpout extends AbstractLearningSpout {
     private CSVReader reader;
     private AtomicLong linesRead;
     private boolean isFinished = false;
+    private long nrMessages = 0;
+    private long totalDuration = 0;
 
     public CSVSpout(String filename, char separator, boolean includesHeaderRow) {
         this.fileName = filename;
@@ -50,9 +52,10 @@ public class CSVSpout extends AbstractLearningSpout {
             String[] line = reader.readNext();
             if (line != null && line.length == 4) {
                 long id = linesRead.incrementAndGet();
-                _collector.emit(new Values(new GenericPreference(Long.parseLong(line[0]), Long.parseLong(line[1]), Float.parseFloat(line[2]))), id);
+                _collector.emit(new Values(new GenericPreference(Long.parseLong(line[0]), Long.parseLong(line[1]), Float.parseFloat(line[2]))), new TrainingMessageID<>(id));
+                nrMessages++;
             } else if (!isFinished) {
-                System.out.println("Finished reading file, " + linesRead.get() + " lines read");
+                System.out.println("Finished reading file, " + linesRead.get() + " lines read\nAverage ACK time:" + totalDuration / nrMessages);
                 isFinished = true;
             }
         } catch (Exception e) {
@@ -62,11 +65,14 @@ public class CSVSpout extends AbstractLearningSpout {
 
     @Override
     public void ack(Object id) {
+        TrainingMessageID<Long> castedId = (TrainingMessageID<Long>) id;
+        totalDuration += (System.currentTimeMillis() - castedId.getCreateTime());
     }
 
     @Override
     public void fail(Object id) {
-        System.err.println("Failed tuple with id " + id);
+        TrainingMessageID<Long> castedId = (TrainingMessageID<Long>) id;
+        System.err.println("Failed tuple with id " + castedId.getId());
     }
 
 }
