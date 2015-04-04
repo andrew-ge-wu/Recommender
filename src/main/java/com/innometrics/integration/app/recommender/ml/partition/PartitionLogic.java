@@ -8,9 +8,9 @@ import org.apache.mahout.cf.taste.model.Preference;
 public interface PartitionLogic {
     String[] groupingFields();
 
-    String[] getPartitionStrings(long userId, long itemId, long timestamp);
+    String[] getPartitionStrings(long userId, long itemId, long timestamp, int idx);
 
-    String[] getPartitionStrings(long userID, long itemID);
+    String[] getPartitionStrings(long userID, long itemID, int idx);
 
-    String[] getPartitionStrings(Preference preference);
+    String[] getPartitionStrings(Preference preference, int idx);
 }

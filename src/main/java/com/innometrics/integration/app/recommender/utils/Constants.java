@@ -51,5 +51,9 @@ public class Constants {
     public static final String REQUEST_PARAM_RULE_ID = "ruleId";
     public static final String REQUEST_PARAM_SIZE = "size";
 
+    public static final String CROSS_REF_IDX = "crossRefIdx";
+    public static final int NR_CROSS_REF = 2;
 
+
+    public static int BATCH_LIMIT = 10000;
 }

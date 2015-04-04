@@ -9,7 +9,19 @@
     <properties>
         <mahout.version>0.9</mahout.version>
         <storm.version>0.9.3</storm.version>
+        <java.version>1.7</java.version>
     </properties>
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
     <dependencies>
         <dependency>
             <groupId>org.apache.storm</groupId>
@@ -34,14 +46,7 @@
         <dependency>
             <groupId>com.innometrics.integration.utils</groupId>
             <artifactId>common-utils</artifactId>
-            <version>1.8-SNAPSHOT</version>
+            <version>[1.8.0,2.0.0]</version>
         </dependency>
-        <!---->
-        <dependency>
-            <groupId>mysql</groupId>
-            <artifactId>mysql-connector-java</artifactId>
-            <version>5.1.31</version>
-        </dependency>
-
     </dependencies>
 </project>

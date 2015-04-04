@@ -39,12 +39,10 @@ public class CalculationBolt extends AbstractRichBolt {
     private LinkedTransferQueue<ResultPreference> defaultQueue = new LinkedTransferQueue<>();
     private AppContextSettings configuration;
     private TrainingDataModel trainingDataModel;
-    private int batchLimit;
 
     @Override
     public void init() {
         try {
-            this.batchLimit = 10000;
             this.trainingDataModel = new InMemoryTrainingDataModel(50000);
             this.recommender = getRecommender();
             this.configuration = new AppContextSettings();
@@ -64,7 +62,7 @@ public class CalculationBolt extends AbstractRichBolt {
 
     @Override
     public void execute(Tuple tuple) {
-        if (calculationQueue.size() > batchLimit) {
+        if (calculationQueue.size() > BATCH_LIMIT) {
             try {
                 Thread.sleep(ITERATION_LENGTH / 100);
             } catch (InterruptedException e) {
@@ -109,7 +107,7 @@ public class CalculationBolt extends AbstractRichBolt {
                 Collection<Tuple> batch = drainQueue(calculationQueue);
                 if (batch.size() > 0) {
                     try {
-                        if (batch.size() < batchLimit / 10) {
+                        if (batch.size() < BATCH_LIMIT / 10) {
                             Thread.sleep(ITERATION_LENGTH);
                             batch.addAll(drainQueue(calculationQueue));
                         }

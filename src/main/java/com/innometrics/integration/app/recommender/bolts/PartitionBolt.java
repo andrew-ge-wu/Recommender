@@ -6,6 +6,7 @@ import backtype.storm.tuple.Tuple;
 import backtype.storm.tuple.Values;
 import com.innometrics.integration.app.recommender.ml.partition.PartitionLogic;
 import com.innometrics.integration.app.recommender.ml.partition.impl.UserPartitionLogic;
+import com.innometrics.integration.app.recommender.utils.Constants;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.log4j.Logger;
 import org.apache.mahout.cf.taste.model.Preference;
@@ -22,11 +23,13 @@ public class PartitionBolt extends AbstractRichBolt {
     @Override
     public void execute(Tuple tuple) {
         Preference preference = (Preference) tuple.getValueByField(PREFERENCE);
-        String[] partition = getPartitionLogic().getPartitionStrings(preference);
-        Object[] toSend = new Object[partition.length + 1];
-        System.arraycopy(partition, 0, toSend, 0, partition.length);
-        toSend[toSend.length - 1] = preference;
-        getOutputCollector().emit(tuple, new Values(toSend));
+        for (int i = 0; i < Constants.NR_CROSS_REF; i++) {
+            String[] partition = getPartitionLogic().getPartitionStrings(preference,i);
+            Object[] toSend = new Object[partition.length + 1];
+            System.arraycopy(partition, 0, toSend, 0, partition.length);
+            toSend[toSend.length - 1] = preference;
+            getOutputCollector().emit(tuple, new Values(toSend));
+        }
         getOutputCollector().ack(tuple);
     }
 
