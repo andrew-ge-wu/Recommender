@@ -8,7 +8,7 @@
     <version>1.0-SNAPSHOT</version>
     <properties>
         <mahout.version>0.9</mahout.version>
-        <storm.version>0.9.3</storm.version>
+        <storm.version>0.9.4</storm.version>
         <java.version>1.7</java.version>
     </properties>
     <build>

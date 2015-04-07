@@ -52,6 +52,7 @@ public class CSVSpout extends AbstractLearningSpout {
             String[] line = reader.readNext();
             if (line != null && line.length == 4) {
                 long id = linesRead.incrementAndGet();
+                //Time.sleep(RandomUtils.nextInt(5));
                 _collector.emit(new Values(new GenericPreference(Long.parseLong(line[0]), Long.parseLong(line[1]), Float.parseFloat(line[2]))), new TrainingMessageID<>(id));
                 nrMessages++;
             } else if (!isFinished) {

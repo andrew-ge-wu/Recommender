@@ -4,7 +4,9 @@ import backtype.storm.task.OutputCollector;
 import backtype.storm.task.TopologyContext;
 import backtype.storm.topology.OutputFieldsDeclarer;
 import backtype.storm.topology.base.BaseRichBolt;
+import backtype.storm.tuple.Tuple;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,8 +36,20 @@ public abstract class AbstractRichBolt extends BaseRichBolt {
         return config;
     }
 
-    public OutputCollector getOutputCollector() {
+    private synchronized OutputCollector getOutputCollector() {
         return outputCollector;
+    }
+
+    public List<Integer> emit(String streamId, Tuple anchor, List<Object> tuple) {
+        return getOutputCollector().emit(streamId, anchor, tuple);
+    }
+
+    public List<Integer> emit(String streamId, List<Object> tuple) {
+        return getOutputCollector().emit(streamId, tuple);
+    }
+
+    public void ack(Tuple anchor) {
+        getOutputCollector().ack(anchor);
     }
 
     @Override

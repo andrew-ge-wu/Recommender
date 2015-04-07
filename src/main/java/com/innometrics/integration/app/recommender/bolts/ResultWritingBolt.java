@@ -12,7 +12,7 @@ public class ResultWritingBolt extends AbstractRichBolt {
 
     @Override
     public void execute(Tuple tuple) {
-        getOutputCollector().ack(tuple);
+        ack(tuple);
     }
 
     @Override

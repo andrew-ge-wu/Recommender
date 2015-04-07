@@ -8,6 +8,13 @@ import org.apache.mahout.cf.taste.model.Preference;
  * @author andrew, Innometrics
  */
 public class UserPartitionLogic implements PartitionLogic {
+    private int maxPartition;
+
+    @Override
+    public void setMaxPartition(int maxIdx) {
+        this.maxPartition = maxIdx;
+    }
+
     @Override
     public String[] groupingFields() {
         return new String[]{Constants.PARTITION_ID, Constants.CROSS_REF_IDX};
@@ -15,7 +22,7 @@ public class UserPartitionLogic implements PartitionLogic {
 
     @Override
     public String[] getPartitionStrings(long userID, long itemId, long timestamp, int idx) {
-        return new String[]{String.valueOf(userID), String.valueOf(idx)};
+        return new String[]{String.valueOf(userID % maxPartition), String.valueOf(idx)};
     }
 
     @Override

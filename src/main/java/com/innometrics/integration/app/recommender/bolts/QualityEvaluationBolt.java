@@ -25,7 +25,7 @@ public class QualityEvaluationBolt extends AbstractRichBolt {
 
     @Override
     public void execute(Tuple tuple) {
-        getOutputCollector().ack(tuple);
+        ack(tuple);
         Preference feedback = (Preference) tuple.getValueByField(PREFERENCE);
         Preference estimation = (Preference) tuple.getValueByField(ESTIMATION);
         if (result == null) {
@@ -34,9 +34,6 @@ public class QualityEvaluationBolt extends AbstractRichBolt {
             result.setHighestRatting(feedback.getValue());
         }
         registerError(estimation, feedback);
-        if (result.getNrSamples() > 0 && result.getNrSamples() % 1000 == 0) {
-            LOG.info("Current MAE: NrSample(" + result.getNrSamples() + ") MAE(" + result.getAvgError() + ") MAX(" + result.getHighestRating() + ") " + result.getAvgError() * 100 / result.getHighestRating() + "%");
-        }
     }
 
 
@@ -52,6 +49,9 @@ public class QualityEvaluationBolt extends AbstractRichBolt {
             float estimateValue = avg(toOperate.getEstimations());
             tempStorage.remove(key);
             result.setSample(Math.abs(realValue - estimateValue));
+            if (result.getNrSamples() > 0 && result.getNrSamples() % 1000 == 0) {
+                LOG.info("Current MAE: NrSample(" + result.getNrSamples() + ") MAE(" + result.getAvgError() + ") MAX(" + result.getHighestRating() + ") " + result.getAvgError() * 100 / result.getHighestRating() + "%");
+            }
         }
     }
 
