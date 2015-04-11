@@ -70,7 +70,7 @@ public class CalculationBolt extends AbstractRichBolt {
                     totalItems++;
                     removingQueue.add(preference.getUserID());
                 }
-                while (totalItems > BATCH_LIMIT * C) {
+                while (totalItems > BATCH_LIMIT * 10) {
                     long toRemove = removingQueue.poll();
                     PreferenceArray removed = storage.remove(toRemove);
                     totalItems -= removed.length();
