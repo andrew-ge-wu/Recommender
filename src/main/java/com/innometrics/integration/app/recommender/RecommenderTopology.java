@@ -21,7 +21,6 @@ import static com.innometrics.integration.app.recommender.utils.Constants.*;
  * @author andrew, Innometrics
  */
 public class RecommenderTopology {
-    public static final int NR_CU = 7;
 
     public static void main(String[] args) throws AlreadyAliveException, InvalidTopologyException {
         TopologyBuilder builder = new TopologyBuilder();
@@ -39,7 +38,8 @@ public class RecommenderTopology {
         Config toReturn = new Config();
         toReturn.registerSerialization(GenericPreference.class);
         toReturn.registerSerialization(ResultPreference.class);
-        toReturn.setMessageTimeoutSecs(600);
+        toReturn.setMessageTimeoutSecs(Integer.MAX_VALUE);
+        toReturn.setMaxSpoutPending(10 * Constants.BATCH_LIMIT);
         toReturn.setMaxSpoutPending(Constants.BATCH_LIMIT * NR_CU);
         toReturn.setNumAckers(NR_CU);
         return toReturn;

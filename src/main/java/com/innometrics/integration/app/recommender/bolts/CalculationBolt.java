@@ -8,7 +8,6 @@ import com.google.common.collect.Lists;
 import com.innometrics.integration.app.recommender.ml.als.ALSWRFactorizer;
 import com.innometrics.integration.app.recommender.ml.model.ResultPreference;
 import com.innometrics.integration.app.recommender.ml.model.UniqueQueue;
-import com.innometrics.utils.app.commons.settings.store.AppContextSettings;
 import org.apache.log4j.Logger;
 import org.apache.mahout.cf.taste.common.NoSuchItemException;
 import org.apache.mahout.cf.taste.common.NoSuchUserException;
@@ -31,18 +30,12 @@ import static com.innometrics.integration.app.recommender.utils.Constants.*;
  */
 public class CalculationBolt extends AbstractRichBolt {
     private static final Logger LOG = Logger.getLogger(CalculationBolt.class);
-    private AppContextSettings configuration;
     private UniqueQueue<Long> removingQueue = new UniqueQueue<>();
     private final FastByIDMap<PreferenceArray> storage = new FastByIDMap<>();
     private int totalItems = 0;
 
     @Override
     public void init() {
-        try {
-            this.configuration = new AppContextSettings();
-        } catch (Throwable e) {
-            throw new RuntimeException(e);
-        }
     }
 
     private Recommender getRecommender() throws TasteException {
