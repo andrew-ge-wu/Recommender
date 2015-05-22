@@ -2,6 +2,7 @@ package com.innometrics.integration.app.recommender.bolts;
 
 import backtype.storm.tuple.Tuple;
 import com.innometrics.integration.app.recommender.ml.model.MultiSampleResult;
+import com.innometrics.integration.app.recommender.ml.model.ResultPreference;
 import com.innometrics.integration.app.recommender.ml.model.ResultStats;
 import com.innometrics.integration.app.recommender.utils.Constants;
 import org.apache.commons.lang3.tuple.Pair;
@@ -22,17 +23,19 @@ public class QualityEvaluationBolt extends AbstractRichBolt {
     private static final Logger LOG = Logger.getLogger(PartitionBolt.class);
     private ResultStats result;
     private Map<Pair<Long, Long>, MultiSampleResult> tempStorage = new ConcurrentHashMap<>();
+    private volatile long totalTimeForEstimation = 0;
 
     @Override
     public void execute(Tuple tuple) {
         ack(tuple);
         Preference feedback = (Preference) tuple.getValueByField(PREFERENCE);
-        Preference estimation = (Preference) tuple.getValueByField(ESTIMATION);
+        ResultPreference estimation = (ResultPreference) tuple.getValueByField(ESTIMATION);
         if (result == null) {
             result = new ResultStats(feedback.getValue());
         } else {
             result.setHighestRatting(feedback.getValue());
         }
+        totalTimeForEstimation += estimation.getTimeTook();
         registerError(estimation, feedback);
     }
 
@@ -50,7 +53,7 @@ public class QualityEvaluationBolt extends AbstractRichBolt {
             tempStorage.remove(key);
             result.setSample(Math.abs(realValue - estimateValue));
             if (result.getNrSamples() > 0 && result.getNrSamples() % 1000 == 0) {
-                LOG.info("Current MAE: NrSample(" + result.getNrSamples() + ") MAE(" + result.getAvgError() + ") MAX(" + result.getHighestRating() + ") " + result.getAvgError() * 100 / result.getHighestRating() + "%");
+                LOG.info("Current MAE: NrSample(" + result.getNrSamples() + ") MAE(" + result.getAvgError() + ") MAX(" + result.getHighestRating() + ") " + result.getAvgError() * 100 / result.getHighestRating() + "% Average time to serving:" + totalTimeForEstimation / result.getNrSamples());
             }
         }
     }

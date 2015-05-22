@@ -9,11 +9,13 @@ public class ResultPreference implements Preference {
     private final long userId;
     private final long itemId;
     private final float value;
+    private final long timeTook;
 
-    public ResultPreference(long userId, long itemId, float value) {
+    public ResultPreference(long userId, long itemId, float value, long timeTook) {
         this.userId = userId;
         this.itemId = itemId;
         this.value = value;
+        this.timeTook = timeTook;
     }
 
     @Override
@@ -34,5 +36,9 @@ public class ResultPreference implements Preference {
     @Override
     public void setValue(float value) {
         throw new UnsupportedOperationException("Can not modify immutable object");
+    }
+
+    public long getTimeTook() {
+        return timeTook;
     }
 }

@@ -6,6 +6,7 @@ import backtype.storm.tuple.Tuple;
 import backtype.storm.tuple.Values;
 import com.google.common.collect.Lists;
 import com.innometrics.integration.app.recommender.ml.model.ResultPreference;
+import com.innometrics.integration.app.recommender.ml.model.TrackedPreference;
 import com.innometrics.integration.app.recommender.ml.model.UniqueQueue;
 import org.apache.log4j.Logger;
 import org.apache.mahout.cf.taste.common.NoSuchItemException;
@@ -46,10 +47,11 @@ public class CalculationBolt extends AbstractRichBolt {
 
     @Override
     public void execute(Tuple tuple) {
-        Collection<Preference> preferenceCollection = (Collection<Preference>) tuple.getValueByField(PREFERENCE);
+        Collection<TrackedPreference> preferenceCollection = (Collection<TrackedPreference>) tuple.getValueByField(PREFERENCE);
         if (preferenceCollection != null) {
             try {
-                for (Preference preference : preferenceCollection) {
+                for (TrackedPreference trackedPreference : preferenceCollection) {
+                    Preference preference = trackedPreference.getPreference();
                     if (!storage.containsKey(preference.getUserID())) {
                         storage.put(preference.getUserID(), new GenericUserPreferenceArray(Lists.newArrayList(preference)));
                     } else {
@@ -72,22 +74,23 @@ public class CalculationBolt extends AbstractRichBolt {
                 LOG.info("Running calculation on " + storage.size() + " users.");
                 Recommender recommender = getRecommender();
                 Set<Long> uids = new HashSet<>();
-                for (Preference eachPreference : preferenceCollection) {
+                for (TrackedPreference trackedPreference : preferenceCollection) {
+                    Preference eachPreference = trackedPreference.getPreference();
                     try {
                         long uid = eachPreference.getUserID();
                         if (!uids.contains(uid)) {
                             List<RecommendedItem> results = recommender.recommend(eachPreference.getUserID(), 10);
                             for (RecommendedItem eachItem : results) {
-                                emit(DEFAULT_STREAM, new Values(new ResultPreference(uid, eachItem.getItemID(), eachItem.getValue())));
+                                emit(DEFAULT_STREAM, new Values(new ResultPreference(uid, eachItem.getItemID(), eachItem.getValue(), System.currentTimeMillis() - trackedPreference.getCreateTime())));
                                 //defaultQueue.put(new ResultPreference(uid, eachItem.getItemID(), eachItem.getValue()));
                             }
                             uids.add(uid);
                         }
-
                         emit(QE_STREAM, tuple, new Values(getTopologyContext().getThisTaskIndex(), eachPreference, new ResultPreference(
                                 eachPreference.getUserID()
-                                , eachPreference.getItemID(),
-                                recommender.estimatePreference(eachPreference.getUserID(), eachPreference.getItemID()))));
+                                , eachPreference.getItemID()
+                                , recommender.estimatePreference(eachPreference.getUserID(), eachPreference.getItemID())
+                                , System.currentTimeMillis() - trackedPreference.getCreateTime())));
                         ack(tuple);
                     } catch (NoSuchUserException | NoSuchItemException e) {
                         LOG.info("No recommendation for " + eachPreference);

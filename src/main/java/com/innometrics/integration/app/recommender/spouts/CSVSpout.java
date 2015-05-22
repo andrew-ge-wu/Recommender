@@ -4,6 +4,7 @@ import au.com.bytecode.opencsv.CSVReader;
 import backtype.storm.spout.SpoutOutputCollector;
 import backtype.storm.task.TopologyContext;
 import backtype.storm.tuple.Values;
+import com.innometrics.integration.app.recommender.ml.model.TrackedPreference;
 import org.apache.mahout.cf.taste.impl.model.GenericPreference;
 
 import java.io.FileReader;
@@ -23,7 +24,6 @@ public class CSVSpout extends AbstractLearningSpout {
     private AtomicLong linesRead;
     private boolean isFinished = false;
     private long nrMessages = 0;
-    private long totalDuration = 0;
 
     public CSVSpout(String filename, char separator, boolean includesHeaderRow) {
         this.fileName = filename;
@@ -53,27 +53,16 @@ public class CSVSpout extends AbstractLearningSpout {
             if (line != null && line.length == 4) {
                 long id = linesRead.incrementAndGet();
                 //Time.sleep(RandomUtils.nextInt(5));
-                _collector.emit(new Values(new GenericPreference(Long.parseLong(line[0]), Long.parseLong(line[1]), Float.parseFloat(line[2]))), new TrainingMessageID<>(id));
+                TrackedPreference preference = new TrackedPreference(new GenericPreference(Long.parseLong(line[0]), Long.parseLong(line[1]), Float.parseFloat(line[2])));
+                _collector.emit(new Values(preference), new TrainingMessageID<>(id));
                 nrMessages++;
             } else if (!isFinished) {
-                System.out.println("Finished reading file, " + linesRead.get() + " lines read\nAverage ACK time:" + totalDuration / nrMessages);
+                System.out.println("Finished reading file, " + linesRead.get() + " lines read");
                 isFinished = true;
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
-
-    @Override
-    public void ack(Object id) {
-        TrainingMessageID<Long> castedId = (TrainingMessageID<Long>) id;
-        totalDuration += (System.currentTimeMillis() - castedId.getCreateTime());
-    }
-
-    @Override
-    public void fail(Object id) {
-        TrainingMessageID<Long> castedId = (TrainingMessageID<Long>) id;
-        System.err.println("Failed tuple with id " + castedId.getId());
     }
 
 }
