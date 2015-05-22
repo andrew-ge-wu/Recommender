@@ -25,7 +25,6 @@ import static com.innometrics.integration.app.recommender.utils.Constants.*;
 public class PartitionBolt extends AbstractRichBolt {
     private static final Logger LOG = Logger.getLogger(PartitionBolt.class);
     private transient PartitionLogic partitionLogic;
-    private static final long DELAY = 60000;
     Map<String, Batch<Tuple>> storage;
     Map<String, String[]> keyMap = new HashMap<>();
 
@@ -45,7 +44,7 @@ public class PartitionBolt extends AbstractRichBolt {
             toSend[toSend.length - 1] = preference;
             String key = ArrayUtils.toString(partition);
             if (!storage.containsKey(key)) {
-                storage.put(key, new Batch<Tuple>(System.currentTimeMillis() + DELAY, BATCH_LIMIT));
+                storage.put(key, new Batch<Tuple>(System.currentTimeMillis() + BATCH_DELAY, BATCH_LIMIT));
                 keyMap.put(key, partition);
             }
             storage.get(key).add(tuple);
