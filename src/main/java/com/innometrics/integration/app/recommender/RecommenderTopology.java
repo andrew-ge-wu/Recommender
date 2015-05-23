@@ -40,7 +40,6 @@ public class RecommenderTopology {
         toReturn.registerSerialization(ResultPreference.class);
         toReturn.setMessageTimeoutSecs(Integer.MAX_VALUE);
         toReturn.setMaxSpoutPending(10 * Constants.BATCH_LIMIT);
-        toReturn.setMaxSpoutPending(Constants.BATCH_LIMIT * NR_CU);
         toReturn.setNumAckers(NR_CU);
         return toReturn;
     }

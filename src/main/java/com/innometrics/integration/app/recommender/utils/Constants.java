@@ -4,7 +4,7 @@ package com.innometrics.integration.app.recommender.utils;
  * @author andrew, Innometrics
  */
 public class Constants {
-    public static final int NR_CU = 1;
+    public static final int NR_CU = 2;
 
     public static final String PARTITION_ID = "partitionId";
     public static final String ESTIMATION = "estimation";
@@ -56,5 +56,6 @@ public class Constants {
     public static final String CROSS_REF_IDX = "crossRefIdx";
     public static final int NR_CROSS_REF = 1;
     public static final long BATCH_DELAY = 60000;
-    public static final int BATCH_LIMIT = 10000;
+    public static final int BATCH_LIMIT = 1000;
+    public static final int CALCULATION_SIZE = 100000;
 }

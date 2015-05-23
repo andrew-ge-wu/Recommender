@@ -65,13 +65,13 @@ public class CalculationBolt extends AbstractRichBolt {
                     totalItems++;
                     removingQueue.add(preference.getUserID());
                 }
-                while (totalItems > BATCH_LIMIT * 10) {
+                while (totalItems > CALCULATION_SIZE) {
                     long toRemove = removingQueue.poll();
                     PreferenceArray removed = storage.remove(toRemove);
                     totalItems -= removed.length();
                     LOG.debug("Reducing items current:" + totalItems + " max:" + BATCH_LIMIT * 10 + " removing:" + removed.length());
                 }
-                LOG.info("Running calculation on " + storage.size() + " users.");
+                LOG.info("Running calculation on " + totalItems + " items " + storage.size() + " users.");
                 Recommender recommender = getRecommender();
                 Set<Long> uids = new HashSet<>();
                 for (TrackedPreference trackedPreference : preferenceCollection) {

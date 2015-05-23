@@ -23,7 +23,6 @@ public class CSVSpout extends AbstractLearningSpout {
     private CSVReader reader;
     private AtomicLong linesRead;
     private boolean isFinished = false;
-    private long nrMessages = 0;
 
     public CSVSpout(String filename, char separator, boolean includesHeaderRow) {
         this.fileName = filename;
@@ -55,7 +54,7 @@ public class CSVSpout extends AbstractLearningSpout {
                 //Time.sleep(RandomUtils.nextInt(5));
                 TrackedPreference preference = new TrackedPreference(new GenericPreference(Long.parseLong(line[0]), Long.parseLong(line[1]), Float.parseFloat(line[2])));
                 _collector.emit(new Values(preference), new TrainingMessageID<>(id));
-                nrMessages++;
+                Thread.sleep(1);
             } else if (!isFinished) {
                 System.out.println("Finished reading file, " + linesRead.get() + " lines read");
                 isFinished = true;
