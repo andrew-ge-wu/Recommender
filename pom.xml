@@ -43,10 +43,5 @@
             <artifactId>mahout-integration</artifactId>
             <version>${mahout.version}</version>
         </dependency>
-        <dependency>
-            <groupId>com.innometrics.integration.utils</groupId>
-            <artifactId>common-utils</artifactId>
-            <version>[1.8.0,2.0.0]</version>
-        </dependency>
     </dependencies>
 </project>
